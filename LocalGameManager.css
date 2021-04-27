@@ -1,0 +1,530 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using UnityEngine;
+
+
+
+public class myMonsterSorter : IComparer
+{
+
+    // Calls CaseInsensitiveComparer.Compare on the monster name string.
+    int IComparer.Compare(System.Object x, System.Object y)
+    {
+        return ((new CaseInsensitiveComparer()).Compare(((GameObject)x).name, ((GameObject)y).name));
+    }
+}
+
+public class CustomArray<T>
+{
+    public T[] GetColumn(T[,] matrix, int columnNumber)
+    {
+        return Enumerable.Range(0, matrix.GetLength(0))
+                .Select(x => matrix[x, columnNumber])
+                .ToArray();
+    }
+
+    public T[] GetRow(T[,] matrix, int rowNumber)
+    {
+        return Enumerable.Range(0, matrix.GetLength(1))
+                .Select(x => matrix[rowNumber, x])
+                .ToArray();
+    }
+}
+
+
+
+public class LocalGameManager : MonoBehaviour
+{
+    public string debugStartMessage;
+    public StartMenu sm;
+
+    public GameObject player1;
+    public GameObject player2;
+    public GameObject yourewinner;
+    public GameObject[] spawnLoc;
+    public GameObject player1Ghost;
+    public GameObject player2Ghost;
+
+
+
+
+
+
+    public float turnTime = 0.5f;
+    bool player1Turn = true;
+    bool nextTurn = true;
+
+
+    static int rowCount = 6;
+    static int colCount = 7;
+    public int[,] board = new int[rowCount, colCount];
+    public int[,] tempBoard = new int[rowCount, colCount];
+
+
+    public bool newRule = false;
+    public int Counter = 0;
+    public List<Tuple<int, int, int>> Player1CurrentTokens = new List<Tuple<int, int, int>>();
+    public List<Tuple<int, int, int>> Player2CurrentTokens = new List<Tuple<int, int, int>>();
+    public List<GameObject> redTokens = new List<GameObject>();
+    public List<GameObject> yellowTokens = new List<GameObject>();
+    public int redDestroyed = 0;
+
+    public int SpawnCounter = 0;
+    public int Spawn2Counter = 0;
+
+    public bool AI = false;
+
+
+
+    void Start()
+    {
+
+        player1Ghost.SetActive(false);
+        player2Ghost.SetActive(false);
+        player1Turn = true;
+        nextTurn = true;
+
+        if (StartMenu.newRuleChosen == true)
+        {
+            newRule = true;
+        }
+
+        if (StartMenu.AIChosen == true)
+        {
+            AI = true;
+        }
+
+    }
+
+    public void HoverColumn(int col)
+    {
+        if (player1Turn & nextTurn)
+        {
+            player1Ghost.SetActive(true);
+            player1Ghost.transform.position = spawnLoc[col].transform.position;
+        }
+        else
+        if (nextTurn)
+        {
+            player2Ghost.SetActive(true);
+            player2Ghost.transform.position = spawnLoc[col].transform.position;
+        }
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        turnTime -= Time.deltaTime;
+        if (turnTime <= 0.0f)
+        {
+            nextTurn = true;
+        }
+
+    }
+
+
+    public void SelectColumn(int column)
+    {
+        Debug.Log("GameManager Column" + column);
+        MainGame(column);
+        //TakeTurn(column);
+    }
+
+
+    void MainGame(int column)
+    {
+        Debug.Log("in the main game");
+        int row;
+
+        foreach (var x in board)
+        {
+            Debug.Log(x.ToString());
+        }
+        //int AIcolumn;
+
+        if (player1Turn && nextTurn)
+        {
+            Debug.Log("player 1 turn true");
+            if (IsValidLocation(board, column) == true)
+            {
+                Debug.Log("p1 valid location was true");
+                row = GetNextOpenRow(board, column);
+                DropToken(board, row, column, 1);
+                Player1CurrentTokens.Add(new Tuple<int, int, int>(row, column, SpawnCounter));
+                SpawnCounter = SpawnCounter + 1;
+                GameObject red = (GameObject)Instantiate(player1, spawnLoc[column].transform.position, spawnLoc[column].transform.rotation);
+                redTokens.Add(red);
+                if (ChickenDinner(board, 1))
+                {
+                    Instantiate(yourewinner, spawnLoc[7].transform.position, spawnLoc[7].transform.rotation);
+                }
+            }
+        }
+        else
+        if (!player1Turn && nextTurn)
+        {
+            Debug.Log("player 2 turn true");
+            if (IsValidLocation(board, column) == true)
+            {
+                Debug.Log("p2 valid location was true");
+                row = GetNextOpenRow(board, column);
+                Debug.Log("before bestmove column equals " + column);
+                column = bestMove(board, 2);
+                Debug.Log("after bestmove column equals " + column);
+                DropToken(board, row, column, 2);
+                Player2CurrentTokens.Add(new Tuple<int, int, int>(row, column, Spawn2Counter));
+                Spawn2Counter = Spawn2Counter + 1;
+                GameObject yellow = (GameObject)Instantiate(player2, spawnLoc[column].transform.position, spawnLoc[column].transform.rotation);
+                yellowTokens.Add(yellow);
+                if (ChickenDinner(board, 2))
+                {
+                    Instantiate(yourewinner, spawnLoc[7].transform.position, spawnLoc[7].transform.rotation);
+                }
+            }
+        }
+
+
+        player1Turn = !player1Turn;
+        nextTurn = false;
+        turnTime = 0.5f;
+        player1Ghost.SetActive(false);
+        player2Ghost.SetActive(false);
+
+
+        Debug.Log("newRule is equal to " + newRule);
+        if (newRule == true)
+        {
+            Counter = Counter + 1;
+            Debug.Log("Counter is equal to " + Counter);
+            if (Counter >= 4)
+            {
+                // delete a piece from both players
+                //DeleteRandom();
+                // get a radom number from 0 to the length of player1currenttokens
+                Debug.Log("Player 1 tuple list [0] is equal to " + Player1CurrentTokens[0]);
+
+                int randRule = UnityEngine.Random.Range(0, Player1CurrentTokens.Count);
+                int ruleRow = Player1CurrentTokens[randRule].Item1;
+                int ruleColumn = Player1CurrentTokens[randRule].Item2;
+                int ruleSpawn = Player1CurrentTokens[randRule].Item3;
+                Debug.Log("the board was changed, [" + ruleRow + "," + ruleColumn + "]" + "has beenn set to 0");
+                DropToken(board, ruleRow, ruleColumn, 0);
+                Debug.Log("the board was changed, Removed red token from board and the current value is " + board[ruleRow,ruleColumn]);
+                Destroy(redTokens[ruleSpawn]);
+                Player1CurrentTokens.RemoveAt(randRule);
+
+
+                int randRule2 = UnityEngine.Random.Range(0, Player2CurrentTokens.Count);
+                int ruleRow2 = Player2CurrentTokens[randRule2].Item1;
+                int ruleColumn2 = Player2CurrentTokens[randRule2].Item2;
+                int ruleSpawn2 = Player2CurrentTokens[randRule2].Item3;
+                Debug.Log("the board was changed, [" + ruleRow2 + "," + ruleColumn2 + "]" + "has beenn set to 0");
+                DropToken(board, ruleRow2, ruleColumn2, 0);
+                Debug.Log("the board was changed, Removed yellow token from board and the current value is " + board[ruleRow2, ruleColumn2]);
+                Destroy(yellowTokens[ruleSpawn2]);
+                Player2CurrentTokens.RemoveAt(randRule2);
+
+                Counter = 0;
+            }
+        }
+    }
+
+
+
+
+    bool IsValidLocation(int[,] board, int column)
+    {
+        if (board[5, column] == 0)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+
+    int GetNextOpenRow(int[,] board, int column)
+    {
+        int openRow = 0;
+        for (int r = 0; r < rowCount; r++)
+        {
+            if (board[r, column] == 0)
+            {
+                openRow = r;
+                break;
+            }
+        }
+        return openRow;
+    }
+
+
+    int DropToken(int[,] board, int row, int column, int token)
+    {
+        board[row, column] = token;
+        return token;
+    }
+
+
+
+    bool ChickenDinner(int[,] board, int token)
+    {
+        // Horizontal
+        for (int c = 0; c < colCount - 3; c++)
+        {
+            for (int r = 0; r < rowCount; r++)
+            {
+
+                if (
+                    board[r, c + 0] == token &&
+                    board[r, c + 1] == token &&
+                    board[r, c + 2] == token &&
+                    board[r, c + 3] == token)
+                {
+                    Debug.Log("Winner winnner chicken dinner");
+                    return true;
+                }
+            }
+        }
+
+        // Vertical
+        for (int c = 0; c < colCount; c++)
+        {
+            for (int r = 0; r < rowCount - 3; r++)
+            {
+
+                if (
+                    board[r + 0, c] == token &&
+                    board[r + 1, c] == token &&
+                    board[r + 2, c] == token &&
+                    board[r + 3, c] == token)
+                {
+                    Debug.Log("Winner winnner chicken dinner");
+                    return true;
+                }
+            }
+        }
+
+        // + Diagnols
+        for (int c = 0; c < colCount - 3; c++)
+        {
+            for (int r = 0; r < rowCount - 3; r++)
+            {
+
+                if (
+                    board[r + 0, c + 0] == token &&
+                    board[r + 1, c + 1] == token &&
+                    board[r + 2, c + 2] == token &&
+                    board[r + 3, c + 3] == token)
+                {
+                    Debug.Log("Winner winnner chicken dinner");
+                    return true;
+                }
+            }
+        }
+
+
+        // - Diagnols
+        for (int c = 0; c < colCount - 3; c++)
+        {
+            for (int r = 3; r < rowCount; r++)
+            {
+
+                if (
+                    board[r - 1, c + 1] == token &&
+                    board[r - 2, c + 2] == token &&
+                    board[r - 3, c + 3] == token)
+                {
+                    Debug.Log("Winner winnner chicken dinner");
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+
+    int ScorePosition(int[,] board, int token)
+    {
+        int score = 0;
+        int[] rowArray = new int[7];
+        int[] colArray = new int[6];
+        int windowCount = 0;
+        int emptywindowCount = 0;
+        int redwindowCount = 0;
+        List<int> rowList = new List<int>();
+        List<int> colList = new List<int>();
+        int[] windowArray = new int[4];
+
+
+        //horizontal
+        for (int r = 0; r < rowCount; r++)
+        {
+
+            for (int c = 0; c < colCount; c++)
+            {
+
+                rowArray[c] = board[r, c];
+            }
+            for (int c = 0; c < colCount - 3; c++)
+            {
+                Array.Copy(rowArray, c, windowArray, 0, c = 4);
+
+               foreach (var number in windowArray.GroupBy(x => x))
+                {
+                    if (number.Key == 2)
+                    {
+                        windowCount = number.Count();
+                        Debug.Log(number.Key + " repeats " + number.Count() + " times");
+                        Debug.Log(" window count equals " + windowCount);
+                    }
+
+                    if (number.Key == 1)
+                    {
+                        redwindowCount = number.Count();
+                        Debug.Log(number.Key + " repeats " + number.Count() + " times");
+                        Debug.Log(" empty window count equals " + emptywindowCount);
+                    }
+
+                    if (number.Key == 0)
+                    {
+                        emptywindowCount = number.Count();
+                        Debug.Log(number.Key + " repeats " + number.Count() + " times");
+                        Debug.Log(" empty window count equals " + emptywindowCount);
+                    }
+                }
+                
+                if (windowCount == 4)
+                {
+                    score = score + 100;
+                }
+                else if (windowCount == 3 && emptywindowCount == 1)
+                {
+                    score = score + 10;
+                }
+
+                else if (windowCount == 2 && emptywindowCount == 2)
+                {
+                    score = score = 5;
+                }
+                else if (redwindowCount == 3 && emptywindowCount == 1)
+                {
+                    score = score - 8;
+                }
+            }
+
+        }
+
+
+
+        //vertical
+        for (int c = 0; c < colCount; c++)
+        {
+
+            for (int r = 0; r < rowCount; r++)
+            {
+
+                colArray[r] = board[r, c];
+            }
+            for (int r = 0; r < rowCount - 3; r++)
+            {
+                Array.Copy(colArray, r, windowArray, 0, r = 4);
+
+                foreach (var number in windowArray.GroupBy(x => x))
+                {
+                    if (number.Key == 2)
+                    {
+                        windowCount = number.Count();
+                        Debug.Log(number.Key + " repeats " + number.Count() + " times");
+                        Debug.Log(" window count equals " + windowCount);
+                    }
+
+                    if (number.Key == 1)
+                    {
+                        redwindowCount = number.Count();
+                        Debug.Log(number.Key + " repeats " + number.Count() + " times");
+                        Debug.Log(" empty window count equals " + emptywindowCount);
+                    }
+
+                    if (number.Key == 0)
+                    {
+                        emptywindowCount = number.Count();
+                        Debug.Log(number.Key + " repeats " + number.Count() + " times");
+                        Debug.Log(" empty window count equals " + emptywindowCount);
+                    }
+                }
+
+                if (windowCount == 4)
+                {
+                    score = score + 100;
+                }
+                else if (windowCount == 3 && emptywindowCount == 1)
+                {
+                    score = score + 10;
+                }
+
+                else if (windowCount ==2 && emptywindowCount == 2)
+                {
+                    score = score = 5;
+                }
+                else if (redwindowCount == 3 && emptywindowCount == 1)
+                {
+                    score = score - 8;
+                }
+
+            }
+
+        }
+
+
+        return score;
+    }
+
+
+
+    List<int> getValidLocations(int[,] board)
+    {
+        List<int> validLocations = new List<int>();
+        for (int c = 0; c < colCount; c++)
+        {
+            if (IsValidLocation(board, c) == true)
+            {
+                validLocations.Add(c);
+            }
+        }
+        return validLocations;
+    }
+
+    int bestMove(int[,] board, int token)
+    {
+        Debug.Log("in best move function");
+        List<int> validLocations = getValidLocations(board);
+        int bestScore = 0;
+        int score = 0;
+        int row;
+        int bestCol = UnityEngine.Random.Range(0, validLocations.Count);
+
+
+        
+
+        //int bestCol = validLocations[Random.Range(0, validLocations.Count)];
+        foreach (int col in validLocations)
+        {
+            
+            row = GetNextOpenRow(board, col);
+            int[,] tempBoard = board.Clone() as int[,];
+            DropToken(tempBoard, row, col, token);
+            score = ScorePosition(tempBoard, token);
+            if (score > bestScore)
+            {
+                bestScore = score;
+                bestCol = col;
+            }
+        }
+        Debug.Log("score is equal to " + score);
+        return bestCol;
+    }
+}
